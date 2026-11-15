@@ -1,0 +1,82 @@
+name: Agent Skills check
+description: Validate Agent Skills with skill-validator and check that pollen can deploy them.
+
+inputs:
+  skills-path:
+    description: Directory holding the skills, relative to the working directory.
+    required: false
+    default: skills
+  strict:
+    description: Fail on skill-validator warnings, not only on errors.
+    required: false
+    default: "true"
+  allow-dirs:
+    description: Non-standard skill directories skill-validator accepts, comma-separated.
+    required: false
+    default: ""
+  skill-validator-version:
+    description: skill-validator release to install (`v1.8.0`, `1.8.0`), or `latest`.
+    required: false
+    default: latest
+  skill-validator-sha256:
+    description: Expected SHA-256 of the skill-validator archive for the runner's platform. The download fails on any mismatch.
+    required: false
+    default: ""
+  pollen-version:
+    description: pollen release to install (`v0.6.0`, `0.6.0`), or `latest`.
+    required: false
+    default: latest
+  pollen-sha256:
+    description: Expected SHA-256 of the pollen archive for the runner's platform. The download fails on any mismatch.
+    required: false
+    default: ""
+  github-token:
+    description: Token used to read the releases through the GitHub API.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  skill-validator-version:
+    description: skill-validator release that was installed.
+    value: ${{ steps.skill-validator.outputs.version }}
+  pollen-version:
+    description: pollen release that was installed.
+    value: ${{ steps.pollen.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: install skill-validator
+      id: skill-validator
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION: ${{ inputs.skill-validator-version }}
+        SHA256: ${{ inputs.skill-validator-sha256 }}
+      run: '"$GITHUB_ACTION_PATH/scripts/install.sh" skill-validator "$VERSION" "$SHA256"'
+
+    - name: install pollen
+      id: pollen
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION: ${{ inputs.pollen-version }}
+        SHA256: ${{ inputs.pollen-sha256 }}
+      run: '"$GITHUB_ACTION_PATH/scripts/install.sh" pollen "$VERSION" "$SHA256"'
+
+    - name: validate the skills with skill-validator
+      if: ${{ !cancelled() && steps.skill-validator.outcome == 'success' }}
+      shell: bash
+      env:
+        SKILLS_PATH: ${{ inputs.skills-path }}
+        STRICT: ${{ inputs.strict }}
+        ALLOW_DIRS: ${{ inputs.allow-dirs }}
+      run: '"$GITHUB_ACTION_PATH/scripts/validate-skills.sh" "$SKILLS_PATH" "$STRICT" "$ALLOW_DIRS"'
+
+    - name: validate the skills with pollen
+      if: ${{ !cancelled() && steps.pollen.outcome == 'success' }}
+      shell: bash
+      env:
+        SKILLS_PATH: ${{ inputs.skills-path }}
+      run: '"$GITHUB_ACTION_PATH/scripts/validate-pollen.sh" "$SKILLS_PATH"'

@@ -1,0 +1,69 @@
+name: quality
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: run the test suite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tests/run.sh
+
+  action:
+    name: action (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: check valid skills
+        id: valid
+        uses: ./
+        with:
+          skills-path: tests/fixtures/valid/skills
+      - name: check invalid skills
+        id: invalid
+        continue-on-error: true
+        uses: ./
+        with:
+          skills-path: tests/fixtures/invalid/skills
+      - name: assert the invalid skills were rejected
+        env:
+          OUTCOME: ${{ steps.invalid.outcome }}
+          SKILL_VALIDATOR_VERSION: ${{ steps.valid.outputs.skill-validator-version }}
+          POLLEN_VERSION: ${{ steps.valid.outputs.pollen-version }}
+        run: |
+          echo "skill-validator $SKILL_VALIDATOR_VERSION, pollen $POLLEN_VERSION"
+          test "$OUTCOME" = failure
